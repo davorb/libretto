@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AgentResult, AgentRunner, AgentTask } from '../agent/index.js'
+import type { AgentResult, AgentRunner, AgentTask, Unsubmitted } from '../agent/index.js'
 import type { Project } from '../project/index.js'
 import type { AppHash, Spec, SpecHash, SpecId, Suite } from '../spec/index.js'
 import { openWorkspace, type FailureId, type FailureRecord, type RunId, type Verdict, type Workspace } from '../workspace/index.js'
@@ -144,7 +144,8 @@ describe('submitVerdict', () => {
 })
 
 describe('verdictFrom', () => {
-  const unsub = (reason: 'turn-cap' | 'budget-cap' | 'ended', lastText = 'hmm'): AgentResult<Verdict> => ({ status: 'unsubmitted', reason, lastText, usage })
+  const unsub = <R extends 'turn-cap' | 'budget-cap' | 'ended'>(reason: R, lastText = 'hmm'): Unsubmitted<R> =>
+    ({ status: 'unsubmitted', reason, lastText, usage }) as Unsubmitted<R>
   it('passes a submitted value through', () => {
     const value: Verdict = { kind: 'app-broken', evidence: 'x' }
     expect(verdictFrom({ status: 'submitted', value, usage })).toBe(value)

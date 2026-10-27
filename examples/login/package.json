@@ -1,0 +1,12 @@
+{
+  "name": "libretto-example-login",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "app": "ALICE_PASSWORD=${ALICE_PASSWORD:-s3cret-pass} node server.mjs",
+    "app:broken": "BREAK_APP=1 ALICE_PASSWORD=${ALICE_PASSWORD:-s3cret-pass} node server.mjs"
+  },
+  "dependencies": {
+    "libretto": "link:../.."
+  }
+}

@@ -18,6 +18,7 @@ export type {
   StopReason,
   Submission,
   ToolReply,
+  Unsubmitted,
   Usage,
 } from './types.js'
 export { AgentSetupError } from './types.js'

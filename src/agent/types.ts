@@ -120,15 +120,22 @@ export interface Usage {
 /** Why a session ended without an accepted submission. */
 export type StopReason = 'turn-cap' | 'budget-cap' | 'ended' | 'aborted'
 
-export type AgentResult<R> =
-  | { readonly status: 'submitted'; readonly value: R; readonly usage: Usage }
-  | {
+/**
+ * Distributed over `StopReason`, so `Exclude<AgentResult<R>, { reason: 'aborted' }>`
+ * really removes the aborted member and a caller that has handled abort can say so in
+ * its parameter type.
+ */
+export type Unsubmitted<Reason extends StopReason = StopReason> = Reason extends unknown
+  ? {
       readonly status: 'unsubmitted'
-      readonly reason: StopReason
+      readonly reason: Reason
       /** Last assistant text, for the report ("I could not find a login page"). */
       readonly lastText: string
       readonly usage: Usage
     }
+  : never
+
+export type AgentResult<R> = { readonly status: 'submitted'; readonly value: R; readonly usage: Usage } | Unsubmitted
 
 /**
  * The only AI seam (SPEC.md). Starts a session with Playwright MCP (if `task.browser`)

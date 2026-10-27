@@ -48,7 +48,7 @@ export function submitVerdict(): Submission<z.infer<typeof verdictInput>, Verdic
  * - submitted → the value
  * - turn-cap | budget-cap → inconclusive, evidence 'budget exhausted'
  * - ended → inconclusive, evidence 'agent ended without a verdict: <lastText>'
- * - aborted → never reaches here (the command stops and writes nothing for this failure)
+ * - aborted → excluded by the parameter type: the caller stops and writes nothing for this failure
  */
 export function verdictFrom(result: Exclude<AgentResult<Verdict>, { status: 'unsubmitted'; reason: 'aborted' }>): Verdict {
   if (result.status === 'submitted') return result.value
@@ -58,8 +58,6 @@ export function verdictFrom(result: Exclude<AgentResult<Verdict>, { status: 'uns
       return { kind: 'inconclusive', evidence: 'budget exhausted' }
     case 'ended':
       return { kind: 'inconclusive', evidence: `agent ended without a verdict: ${result.lastText}` }
-    case 'aborted':
-      throw new Error('verdictFrom received an aborted result; the caller must stop instead')
   }
 }
 

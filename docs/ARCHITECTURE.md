@@ -164,6 +164,26 @@ Rejected: `endsSession` tools that abort the vendor session from inside a handle
   - `McpServerLaunch` gains `cleanup()` (removes the secrets file) and an internal `ready` promise runners await before spawning.
   - `ClaudeRunner` passes no `allowedTools`: the SDK auto-approves bare entries before `canUseTool`, so the callback alone is the gate. The sketch's "allowedTools plus canUseTool as defense in depth" was wrong about the SDK.
   - `CopilotRunner` expresses the allowlist as `availableTools` = custom names + `mcp:playwright-<tool>` over a static `PLAYWRIGHT_TOOLS` list, because Copilot has no whole-server form. Unverified until the Copilot spike.
+- 2026-10-27, spec, workspace, config, project, log, draft renderer, test entry, triage evidence (wave 1, five parallel workers; 112 tests). Accepted by the orchestrator after reading each report and a green `pnpm typecheck && pnpm test`.
+  - `ParsedSpec` (internal) gains `usesLine` so unknown-fixture and cycle issues carry a file line.
+  - Step titles are `Steps N: <text>` / `Expect N: <text>`; the text is everything after the first `: `, so any bullet round-trips.
+  - Fixtures need `Steps` only; scenario files need at least one `Expect` bullet per scenario. A `Steps:`/`Expect:` line outside a scenario is an issue, not silently attached.
+  - `renderHeader` returns the whole file (header plus body). `writeGenerated.replaced` is the prior file's staleness measured against the new test's hashes.
+  - `mergeLastRun` treats `flaky` like `failures`: entries in `ran` are dropped, the rest kept.
+  - A fixture with several scenarios renders each as its own test; the storageState save goes at the end of the last one.
+  - Trace parsing follows `parentId` to find the enclosing `test.step` and spans several `.trace` files; `test.step` events label actions rather than appearing as actions. Format assumptions are inferred and documented in `artifacts.ts`; confirm on a real trace.
+  - `fflate` added for trace.zip reading.
+  - `pnpm typecheck` now also compiles tests and scripts (`tsconfig.test.json`), so the `@ts-expect-error` config test is enforced.
+- 2026-10-27, run, triage, generate (wave 2a, three parallel workers; 170 tests). Accepted the same way; `run` has a real Chromium integration test.
+  - Resolved per-command profiles live at `config.profiles.{generate,triage,fix}` (the sketch's prose said `config.generate`; the type was right).
+  - The wrapper config is one `.mjs` per mode (`playwright.config.mjs`, `playwright.fixtures.config.mjs`, `playwright.draft.config.mjs`), so draft and fixture runs never overwrite the suite wrapper.
+  - `libretto/test` and `libretto/reporter` resolve from generated files through a `.libretto/node_modules/libretto/` shim written on every `writeWrapperConfig`, re-exporting the built `dist` by absolute URL. No dependence on the user's install layout.
+  - Projects: `setup:<fixtureId>` per fixture and `scenarios` or `scenarios:<innermost fixture>` per distinct chain, so each project has one dependency. The user's `projects` are not multiplied in v1; the wrapper keeps the first project's `use` and warns once (from inside Playwright's process, via `console.warn`, since the user config loads there). Known limitation: relative paths in the user's config resolve against `.libretto/`.
+  - `libretto/test` attaches `libretto-dom` as an in-memory body; the reporter persists it to `.libretto/artifacts/<runId>/<id>.dom.json` and records that path. Cleaner would be for `libretto/test` to write the file itself; deferred.
+  - `run()` throws if `last-run.json` was not updated during the run (interrupted Playwright), instead of reporting stale failures. `missing` specs appear in `staleWarnings` and are skipped.
+  - `triage()` probes once per invocation even when everything is skipped, so `live` is always honest. A failure whose spec is no longer in the suite is skipped as `spec-changed-since-run`.
+  - `write_test.accept` redacts secret values from `runDraft` output before returning it as feedback.
+  - `AgentResult`'s unsubmitted member is now distributed over `StopReason` (`Unsubmitted<Reason>`), so `verdictFrom`'s `Exclude<…, { reason: 'aborted' }>` excludes what it claims to.
 
 ## Open questions and risks
 

@@ -1,3 +1,7 @@
 node_modules/
 dist/
 *.tsbuildinfo
+
+# Libretto scratch in example projects. Generated tests are committed; everything else is per-run.
+**/.libretto/*
+!**/.libretto/generated/

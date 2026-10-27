@@ -42,5 +42,6 @@ export {
   type StopReason,
   type Submission,
   type ToolReply,
+  type Unsubmitted,
   type Usage,
 } from './agent/index.js'
