@@ -3,6 +3,9 @@ import { inspect } from 'node:util'
 /** Assigned by the static block below. Declared first so the class body can reference it. */
 let readValues: (s: Secrets) => Record<string, string>
 
+/** Values shorter than this are not redacted: they would match everywhere. `fromEnv` warns about them. */
+const MIN_REDACTABLE = 4
+
 /**
  * Values for `{{env.NAME}}` placeholders, sealed so they can't reach a prompt, a log,
  * a transcript, or git.
@@ -11,7 +14,8 @@ let readValues: (s: Secrets) => Record<string, string>
  * - Values live in a `#private` field. `toString`, `toJSON`, and `util.inspect` print
  *   names only, so a template literal or `JSON.stringify` of a task leaks nothing.
  * - The only reader is `unseal()` below, which `agent/index.ts` does not export.
- *   Its only caller is `playwright-mcp.ts`, which puts the values in the MCP child's env.
+ *   Its only caller is `playwright-mcp.ts`, which writes the values to the MCP child's
+ *   secrets file.
  */
 export class Secrets {
   readonly #values: ReadonlyMap<string, string>
@@ -25,14 +29,27 @@ export class Secrets {
   /**
    * Seals exactly the names a spec references. Throws `MissingSecretsError` listing
    * every unset name, so the user fixes them in one pass instead of one per run.
+   * `short` lists names whose values are too short to redact; callers warn about them.
    */
-  static fromEnv(names: Iterable<string>, env: NodeJS.ProcessEnv): Secrets {
-    // TODO: collect missing names; throw MissingSecretsError(missing) if any; else seal.
-    throw new Error('not implemented')
+  static fromEnv(names: Iterable<string>, env: NodeJS.ProcessEnv): { secrets: Secrets; short: readonly string[] } {
+    const values = new Map<string, string>()
+    const missing: string[] = []
+    const short: string[] = []
+    for (const name of new Set(names)) {
+      const value = env[name]
+      if (value === undefined || value === '') {
+        missing.push(name)
+        continue
+      }
+      if (value.length < MIN_REDACTABLE) short.push(name)
+      values.set(name, value)
+    }
+    if (missing.length > 0) throw new MissingSecretsError(missing.sort())
+    return { secrets: new Secrets(values), short }
   }
 
   get names(): readonly string[] {
-    return [...this.#values.keys()]
+    return [...this.#values.keys()].sort()
   }
 
   /**
@@ -41,18 +58,25 @@ export class Secrets {
    * values, but a draft must never contain one.
    */
   findLeak(text: string): string | null {
-    throw new Error('not implemented')
+    for (const [name, value] of this.#values) {
+      if (value.length >= MIN_REDACTABLE && text.includes(value)) return name
+    }
+    return null
   }
 
   /**
    * Replaces every occurrence of a value with its `{{env.NAME}}` placeholder. The
    * harness passes every event and every tool reply through this before anything
    * leaves the session, so a value that surfaces in a DOM snapshot or an error message
-   * never reaches a log or a transcript. Values of fewer than 4 chars are not
-   * redacted (they would match everywhere); `fromEnv` warns about those.
+   * never reaches a log or a transcript. Values shorter than `MIN_REDACTABLE` are
+   * left alone (they would match everywhere); `fromEnv` reports those as `short`.
    */
   redact(text: string): string {
-    throw new Error('not implemented')
+    let out = text
+    for (const [name, value] of this.#values) {
+      if (value.length >= MIN_REDACTABLE) out = out.replaceAll(value, `{{env.${name}}}`)
+    }
+    return out
   }
 
   toString(): string {

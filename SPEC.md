@@ -153,7 +153,7 @@ Implications for the design:
 - **`submit_verdict` replaces structured output.** The verdict is a tool call validated by Zod in our handler. That works the same on both vendors and avoids Copilot's preview `responseSchema`. If the agent never calls it, that is an `inconclusive` verdict.
 - **What stays vendor-specific, inside the runner:** the run loop, event streaming into our logger, auth, and cancellation.
 - **Do not go further.** We do not abstract Playwright MCP's own tool names (`browser_click` and the like). They are identical on both backends and the agent sees them directly.
-- **Secrets:** the agent types `{{env.X}}` placeholders; Playwright MCP's `--secrets <dotenv>` substitutes them by name in `browser_type` and `browser_fill_form`. The dotenv is written 0600 under `.libretto/` for the session and deleted after. Values never enter a prompt, a log, or git.
+- **Secrets (verified against @playwright/mcp 0.0.83):** in the browser the agent types the bare secret *name* (`ALICE_PASSWORD`) as the whole text of `browser_type` or `browser_fill_form`; Playwright MCP swaps in the value from its `--secrets <dotenv>` file and replaces values with `<secret>NAME</secret>` in every response, log and file it produces, so snapshots the model sees are already scrubbed. The dotenv is written 0600 under `.libretto/` for the session and deleted after. In specs the placeholder stays `{{env.X}}`; in generated code it is `process.env.X`. Values never enter a prompt, a log, or git.
 
 ## Models and cost
 

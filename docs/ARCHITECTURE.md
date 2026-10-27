@@ -158,9 +158,16 @@ Rejected: `endsSession` tools that abort the vendor session from inside a handle
 
 ## Implementation reconciliation
 
+- 2026-10-27, agent module (harness, secrets, playwright-mcp, ClaudeRunner, CopilotRunner), accepted by the Claude spike (`scripts/spike-claude.mjs`: 7 turns, $0.048, secret typed by name, no value in any event).
+  - `Secrets.fromEnv` returns `{ secrets, short }` instead of `Secrets`, so callers can warn about values too short to redact. Local to the constructor; the sealed type is unchanged.
+  - `Secrets.redact` added; the harness applies it to every event, reply, error, and `lastText`. `Session` gains `redact` and `cleanup`.
+  - `McpServerLaunch` gains `cleanup()` (removes the secrets file) and an internal `ready` promise runners await before spawning.
+  - `ClaudeRunner` passes no `allowedTools`: the SDK auto-approves bare entries before `canUseTool`, so the callback alone is the gate. The sketch's "allowedTools plus canUseTool as defense in depth" was wrong about the SDK.
+  - `CopilotRunner` expresses the allowlist as `availableTools` = custom names + `mcp:playwright-<tool>` over a static `PLAYWRIGHT_TOOLS` list, because Copilot has no whole-server form. Unverified until the Copilot spike.
+
 ## Open questions and risks
 
-- How does the agent type a `{{env.X}}` value it never sees? The design rests on Playwright MCP's `--secrets` dotenv substitution in `browser_type` and `browser_fill_form`. The spike must confirm it on the pinned version and both backends; the fallback is a stdio shim inside `agent/`. Either way, a typed value can reappear in a later DOM snapshot that the model receives directly. Is "never in the prompt, never in our logs, never in git" an acceptable statement of the invariant?
+- ~~How does the agent type a `{{env.X}}` value it never sees?~~ Resolved by the Claude spike (2026-10-27): Playwright MCP's `lookupSecret` swaps the value in when the whole `browser_type`/`browser_fill_form` text equals a secret name, and `redactSecrets` scrubs values from every response, so DOM snapshots reach the model already redacted. The spike typed a secret by name, unlocked the page, and no event carried the value. The stdio shim fallback is not needed. Copilot still has to confirm the same flow.
 - Can Copilot's `defineTool` return image content? If not, `view_screenshot` on Copilot falls back to a text description from the DOM snapshot, and `ToolReply` keeps its union.
 - Should we reject multiple direct `uses:` entries in v1, or merge storage states?
 - How should Libretto handle a user `playwright.config` that defines several projects (browsers)? The sketch crosses each user project with Libretto's setup projects. Is a full matrix what users expect?
