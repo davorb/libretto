@@ -19,26 +19,51 @@ export const verdictInput = z.object({
   evidence: z.string().min(1),
 })
 
-/** `submit_verdict`. Rejects a test-broken verdict without a cause, and a cause on any other kind. */
-export function submitVerdict(): Submission<z.infer<typeof verdictInput>, Verdict> {
+/** Prefix the triager puts on a verdict that was submitted without probing a reachable app. */
+export const UNPROBED_PREFIX = '[did not probe the live app] '
+
+/**
+ * `submit_verdict`. Rejects a test-broken verdict without a cause, and a cause on any other kind.
+ *
+ * `probed` is given when the app is live. It reports whether the session has made any
+ * browser call yet. The first submission without one is rejected with instructions to
+ * reproduce the failing step live (SPEC: triage probes). A second unprobed submission is
+ * accepted, so an agent that cannot drive the browser is not stuck until its turn cap,
+ * but its evidence is prefixed with `UNPROBED_PREFIX` so the reader knows.
+ */
+export function submitVerdict(probed?: () => boolean): Submission<z.infer<typeof verdictInput>, Verdict> {
+  let nudged = false
   return {
     name: 'submit_verdict',
     description:
       'Submit your final verdict, once. kind is app-broken, test-broken, or inconclusive. ' +
       'cause (spec-wrong or generated-code-wrong) is required for test-broken and forbidden otherwise. ' +
-      'evidence says what you observed that decides it.',
+      'evidence says what you observed that decides it.' +
+      (probed ? ' The app is live: reproduce the failing step in the browser before you submit.' : ''),
     input: verdictInput,
     async accept(input) {
-      if (input.kind === 'test-broken') {
-        if (input.cause === undefined) {
-          return { ok: false, feedback: 'A test-broken verdict needs a cause: "spec-wrong" or "generated-code-wrong".' }
-        }
-        return { ok: true, value: { kind: 'test-broken', cause: input.cause, evidence: input.evidence } }
+      if (input.kind === 'test-broken' && input.cause === undefined) {
+        return { ok: false, feedback: 'A test-broken verdict needs a cause: "spec-wrong" or "generated-code-wrong".' }
       }
-      if (input.cause !== undefined) {
+      if (input.kind !== 'test-broken' && input.cause !== undefined) {
         return { ok: false, feedback: `cause applies only to test-broken. Resubmit the ${input.kind} verdict without a cause.` }
       }
-      return { ok: true, value: { kind: input.kind, evidence: input.evidence } }
+      let evidence = input.evidence
+      if (probed && !probed()) {
+        if (!nudged) {
+          nudged = true
+          return {
+            ok: false,
+            feedback:
+              'Not accepted yet: you have not used the browser. The app is live, so reproduce the failing step ' +
+              '(navigate, perform the steps, look at the page), then resubmit with what you observed now, not only what the recording shows.',
+          }
+        }
+        evidence = UNPROBED_PREFIX + evidence
+      }
+      return input.kind === 'test-broken'
+        ? { ok: true, value: { kind: 'test-broken', cause: input.cause!, evidence } }
+        : { ok: true, value: { kind: input.kind, evidence } }
     },
   }
 }
@@ -69,7 +94,7 @@ Verdicts:
 - test-broken with cause generated-code-wrong: the spec is right and the app does it, but the generated code is wrong, for example a brittle or incorrect locator or a bad wait.
 - inconclusive: you cannot tell from the evidence.
 
-When browser tools are available, probe the live app to check what it really does. Use the evidence tools (view_screenshot, read_dom, read_trace) to inspect what the test saw when it failed. Do not guess: ground the verdict in what you observed, and put that in the evidence.
+When browser tools are available, you must reproduce the failing step in the live app before submitting: navigate to it, perform the scenario's steps, and look at what the page does now. submit_verdict will not accept a first verdict that skipped this. Use the evidence tools (view_screenshot, read_dom, read_trace) to inspect what the test saw when it failed. Do not guess: ground the verdict in what you observed, and put that in the evidence.
 End by calling submit_verdict once.`
 
 const TRACE_TAIL = 15
@@ -150,17 +175,23 @@ export async function triageTask(project: Project, spec: Spec, failure: FailureR
     `## Environment\n${mode}`,
   ].join('\n\n')
 
+  // The probing gate: count browser calls as the harness reports them, so `submit_verdict`
+  // can tell whether the agent looked at the live app. Only when there is a browser.
+  let browserCalls = 0
   return {
     label: `triage ${failure.id}`,
     system: SYSTEM,
     prompt,
     tools: evidenceTools(evidence),
-    submit: submitVerdict(),
+    submit: submitVerdict(browser ? () => browserCalls > 0 : undefined),
     browser,
     profile: project.config.profiles.triage,
     cwd: project.config.root,
     ...(project.signal ? { signal: project.signal } : {}),
-    onEvent: (event) => project.log.agent(`triage ${failure.id}`, event),
+    onEvent: (event) => {
+      if (event.type === 'tool-call' && event.server === 'playwright') browserCalls += 1
+      project.log.agent(`triage ${failure.id}`, event)
+    },
   }
 }
 

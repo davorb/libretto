@@ -13,7 +13,7 @@ vi.mock('../project/index.js', () => ({ openProject: vi.fn() }))
 
 import { openProject } from '../project/index.js'
 import { triage } from './index.js'
-import { probe, submitVerdict, triageOne, triageTask, verdictFrom } from './triager.js'
+import { probe, submitVerdict, triageOne, triageTask, UNPROBED_PREFIX, verdictFrom } from './triager.js'
 
 const usage = { turns: 3, costUsd: 0.5 }
 const specId = 'auth/login' as SpecId
@@ -85,10 +85,12 @@ function makeProject(agent: AgentRunner, over: { baseURL?: string; suite?: Suite
   } as unknown as Project
 }
 
+/** Like a real agent: probes the live app once (one browser call) when a browser is attached, then submits. */
 const submitting = (verdict: unknown, seen: AgentTask<Verdict>[] = []): AgentRunner => ({
   backend: 'scripted',
   async run<R>(task: AgentTask<R>): Promise<AgentResult<R>> {
     seen.push(task as unknown as AgentTask<Verdict>)
+    if (task.browser) task.onEvent?.({ type: 'tool-call', server: 'playwright', tool: 'browser_navigate', input: {} })
     const accepted = await task.submit.accept(task.submit.input.parse(verdict))
     return accepted.ok ? { status: 'submitted', value: accepted.value, usage } : { status: 'unsubmitted', reason: 'ended', lastText: accepted.feedback, usage }
   },
@@ -143,6 +145,31 @@ describe('submitVerdict', () => {
   })
 })
 
+describe('submitVerdict probing gate', () => {
+  it('rejects the first unprobed verdict, then accepts with a prefix', async () => {
+    const s = submitVerdict(() => false)
+    expect(s.description).toContain('reproduce the failing step')
+    const first = await s.accept({ kind: 'app-broken', evidence: 'from the screenshot' })
+    expect(first.ok).toBe(false)
+    if (!first.ok) expect(first.feedback).toMatch(/have not used the browser/)
+    const second = await s.accept({ kind: 'app-broken', evidence: 'from the screenshot' })
+    expect(second).toEqual({ ok: true, value: { kind: 'app-broken', evidence: `${UNPROBED_PREFIX}from the screenshot` } })
+  })
+
+  it('accepts a probed verdict first time, unprefixed, and still validates cause', async () => {
+    const s = submitVerdict(() => true)
+    expect(await s.accept({ kind: 'test-broken', cause: 'spec-wrong', evidence: 'saw it live' })).toEqual({
+      ok: true,
+      value: { kind: 'test-broken', cause: 'spec-wrong', evidence: 'saw it live' },
+    })
+    expect((await s.accept({ kind: 'test-broken', evidence: 'no cause' })).ok).toBe(false)
+  })
+
+  it('has no gate without a probe function (offline)', async () => {
+    expect(await submitVerdict().accept({ kind: 'inconclusive', evidence: 'e' })).toEqual({ ok: true, value: { kind: 'inconclusive', evidence: 'e' } })
+  })
+})
+
 describe('verdictFrom', () => {
   const unsub = <R extends 'turn-cap' | 'budget-cap' | 'ended'>(reason: R, lastText = 'hmm'): Unsubmitted<R> =>
     ({ status: 'unsubmitted', reason, lastText, usage }) as Unsubmitted<R>
@@ -177,6 +204,19 @@ describe('triageTask', () => {
     expect(task.browser?.outputDir.startsWith(path.join(ws.dir, 'agent-output'))).toBe(true)
     expect(task.submit.name).toBe('submit_verdict')
     expect(project.log.warn).toHaveBeenCalled() // missing secret falls back to none
+  })
+
+  it('live: the gate opens once the session makes a browser call', async () => {
+    const task = await triageTask(makeProject(unsubmitted('ended')), spec, failure('valid credentials', bodyHash), true)
+    expect(task.system).toContain('must reproduce the failing step')
+    expect((await task.submit.accept({ kind: 'app-broken', evidence: 'e' })).ok).toBe(false)
+    task.onEvent?.({ type: 'tool-call', server: 'playwright', tool: 'browser_navigate', input: {} })
+    expect(await task.submit.accept({ kind: 'app-broken', evidence: 'e' })).toEqual({ ok: true, value: { kind: 'app-broken', evidence: 'e' } })
+  })
+
+  it('offline: no gate, a first unprobed verdict is accepted as is', async () => {
+    const task = await triageTask(makeProject(unsubmitted('ended')), spec, failure('valid credentials', bodyHash), false)
+    expect(await task.submit.accept({ kind: 'app-broken', evidence: 'e' })).toEqual({ ok: true, value: { kind: 'app-broken', evidence: 'e' } })
   })
 
   it('says outside any step when step is null', async () => {
