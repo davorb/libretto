@@ -1,5 +1,5 @@
 import { openProject, type CommandOptions } from '../project/index.js'
-import type { SpecId } from '../spec/index.js'
+import type { Spec, SpecId } from '../spec/index.js'
 import type { FailureRecord, RunId, Staleness } from '../workspace/index.js'
 import { spawnPlaywright, writeWrapperConfig } from './playwright.js'
 
@@ -29,10 +29,32 @@ export interface RunReport {
  * 5. record = workspace.readLastRun() (merged by the reporter); report.failures = entries whose runId is record.latest.runId
  */
 export async function run(options: RunOptions = {}): Promise<RunReport> {
-  void openProject
-  void spawnPlaywright
-  void writeWrapperConfig
-  throw new Error('not implemented')
+  const project = await openProject(options)
+  const { suite, workspace, log } = project
+  const selected = suite.select(options.specs ?? [])
+  const specs = [...new Map(selected.flatMap((s) => [...suite.fixtureChain(s), s]).map((s) => [s.id, s])).values()]
+
+  const staleWarnings: { spec: SpecId; staleness: Exclude<Staleness, 'fresh'> }[] = []
+  const runnable: Spec[] = []
+  for (const spec of specs) {
+    const staleness = await workspace.staleness(spec, suite.app)
+    if (staleness === 'missing') log.warn(`${spec.id} has no generated test. Run \`libretto generate ${spec.id}\`.`)
+    else {
+      runnable.push(spec)
+      if (staleness !== 'fresh') log.warn(`${spec.id} is ${staleness}. Run \`libretto generate ${spec.id}\`.`)
+    }
+    if (staleness !== 'fresh') staleWarnings.push({ spec: spec.id, staleness })
+  }
+
+  const wrapper = await writeWrapperConfig(project, { kind: 'suite', specs: runnable })
+  const startedAt = Date.now()
+  const exitCode = await spawnPlaywright(project, wrapper, runnable.map((s) => workspace.generatedFile(s.id)), options.playwrightArgs ?? [])
+  const record = await workspace.readLastRun()
+  if (!record || Date.parse(record.latest.startedAt) < startedAt - 1000) {
+    throw new Error(`Playwright exited with ${exitCode} without recording results in ${workspace.dir}/last-run.json (interrupted, or no test ran)`)
+  }
+  const failures = Object.values(record.failures).filter((f) => f.runId === record.latest.runId)
+  return { runId: record.latest.runId, exitCode, passed: record.latest.passed, failures, staleWarnings }
 }
 
 // Package-internal (used by generate). The public index re-exports only `run` and its types.

@@ -32,8 +32,43 @@ export interface TriageReport {
  *    This process is the only writer of triage.json; failures don't share state.
  */
 export async function triage(options: TriageOptions = {}): Promise<TriageReport> {
-  void openProject
-  void probe
-  void triageOne
-  throw new Error('not implemented')
+  const project = await openProject(options)
+  const { workspace, suite } = project
+  const lastRun = await workspace.readLastRun()
+  if (lastRun === null) throw new Error('no recorded run; run `libretto run` first')
+
+  const selected = new Set(suite.select(options.specs ?? []).map((s) => s.id))
+  const failures = Object.values(lastRun.failures).filter((f) => selected.has(f.spec))
+
+  let log = await workspace.readTriage()
+  const skipped: { failure: FailureId; reason: TriageReport['skipped'][number]['reason'] }[] = []
+  const todo: typeof failures = []
+  for (const failure of failures) {
+    const spec = suite.specs.get(failure.spec)
+    if (!options.force && log.records[failure.id]?.runId === failure.runId) {
+      skipped.push({ failure: failure.id, reason: 'already-triaged' })
+    } else if (spec === undefined || spec.hash !== failure.generated.specHash) {
+      skipped.push({ failure: failure.id, reason: 'spec-changed-since-run' })
+    } else if ((await workspace.stamp(failure.spec))?.bodyHash !== failure.generated.bodyHash) {
+      skipped.push({ failure: failure.id, reason: 'generated-changed-since-run' })
+    } else {
+      todo.push(failure)
+    }
+  }
+
+  const live = await probe(project.config.baseURL, project.signal)
+  if (todo.length > 0 && !live) {
+    project.log.warn(`${project.config.baseURL} is unreachable; verdicts use recorded artifacts only.`)
+  }
+
+  const records: TriageRecord[] = []
+  for (const failure of todo) {
+    if (project.signal?.aborted) break
+    const record = await triageOne(project, failure, live)
+    if (record === 'aborted') break
+    records.push(record)
+    log = { records: { ...log.records, [failure.id]: record } }
+    await workspace.writeTriage(log)
+  }
+  return { runId: lastRun.latest.runId, records, skipped, live }
 }

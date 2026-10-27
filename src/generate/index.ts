@@ -1,5 +1,5 @@
 import { openProject, type CommandOptions, type Project } from '../project/index.js'
-import type { SpecId } from '../spec/index.js'
+import type { Spec, SpecId } from '../spec/index.js'
 import { generateOne, type SpecGeneration } from './generator.js'
 
 export interface GenerateOptions extends CommandOptions {
@@ -36,6 +36,41 @@ export async function generateSpecs(
   ids: readonly SpecId[],
   opts: { force: boolean; hints: ReadonlyMap<SpecId, string> },
 ): Promise<GenerateReport> {
-  void generateOne
-  throw new Error('not implemented')
+  const selected = new Set(ids)
+  const order: Spec[] = []
+  const seen = new Set<SpecId>()
+  for (const id of ids) {
+    const spec = project.suite.specs.get(id)
+    if (!spec) throw new Error(`Unknown spec ${id}`)
+    for (const s of [...project.suite.fixtureChain(spec), spec]) {
+      if (seen.has(s.id)) continue
+      seen.add(s.id)
+      order.push(s)
+    }
+  }
+
+  const written: Extract<SpecGeneration, { status: 'written' }>[] = []
+  const fresh: SpecId[] = []
+  const failed: Extract<SpecGeneration, { status: 'failed' }>[] = []
+  const broken = new Set<SpecId>()
+
+  for (const spec of order) {
+    const brokenFixture = project.suite.fixtureChain(spec).find((f) => broken.has(f.id))
+    const result: SpecGeneration = brokenFixture
+      ? { status: 'failed', spec: spec.id, reason: 'fixture-not-ready', detail: `Fixture ${brokenFixture.id} failed to generate.` }
+      : await generateOne(project, spec, { force: opts.force && selected.has(spec.id), hint: opts.hints.get(spec.id) ?? null })
+    switch (result.status) {
+      case 'written':
+        written.push(result)
+        break
+      case 'fresh':
+        fresh.push(result.spec)
+        break
+      case 'failed':
+        failed.push(result)
+        broken.add(spec.id)
+        break
+    }
+  }
+  return { written, fresh, failed }
 }
