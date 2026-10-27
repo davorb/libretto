@@ -16,8 +16,13 @@ export const test = base.extend<{ librettoDom: void }>({
     async ({ page }, use, testInfo) => {
       await use()
       if (testInfo.status !== testInfo.expectedStatus) {
-        // TODO: attach { html: await page.content(), aria: await page.locator('body').ariaSnapshot() }
-        //       as 'libretto-dom' (application/json); swallow errors if the page is closed.
+        try {
+          const html = await page.content()
+          const aria = await page.locator('body').ariaSnapshot()
+          await testInfo.attach('libretto-dom', { body: JSON.stringify({ html, aria }), contentType: 'application/json' })
+        } catch {
+          // The page is already closed; triage falls back to the trace.
+        }
       }
     },
     { auto: true },

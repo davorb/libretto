@@ -9,6 +9,28 @@ export interface Logger {
   agent(label: string, event: AgentEvent): void
 }
 
+function describeEvent(event: AgentEvent): string {
+  switch (event.type) {
+    case 'turn':
+      return `turn ${event.turn}`
+    case 'text':
+      return event.text
+    case 'tool-call':
+      return `${event.server}.${event.tool} ${JSON.stringify(event.input) ?? ''}`.trimEnd()
+    case 'tool-result':
+      return `${event.server}.${event.tool} ${event.ok ? 'ok' : 'failed'}`
+  }
+}
+
+/** Writes to stderr (stdout stays clean for machine output). Agent transcript lines print only when `verbose`. */
 export function consoleLogger(options: { verbose: boolean }): Logger {
-  throw new Error('not implemented')
+  const write = (line: string) => void process.stderr.write(`${line}\n`)
+  return {
+    info: (message) => write(message),
+    warn: (message) => write(`warn: ${message}`),
+    error: (message) => write(`error: ${message}`),
+    agent: (label, event) => {
+      if (options.verbose) write(`[${label}] ${describeEvent(event)}`)
+    },
+  }
 }

@@ -76,7 +76,70 @@ export interface TriageLog {
   readonly records: Readonly<Record<FailureId, TriageRecord>>
 }
 
-// TODO: Zod schemas mirroring the interfaces above, with `satisfies z.ZodType<RunRecord>`
-// so the interface and schema can't drift (the build fails if they disagree).
-export const runRecordSchema: z.ZodType<RunRecord> = undefined as never
-export const triageLogSchema: z.ZodType<TriageLog> = undefined as never
+const failureId = z.string().transform((s) => s as FailureId)
+const runId = z.string().transform((s) => s as RunId)
+const specId = z.string().transform((s) => s as SpecId)
+const specHash = z.string().transform((s) => s as SpecHash)
+const appHash = z.string().transform((s) => s as AppHash)
+
+const stampSchema = z.object({ specHash, appHash, bodyHash: z.string() })
+
+const stepRefSchema = z.object({
+  scenario: z.string(),
+  section: z.enum(['steps', 'expect']),
+  index: z.number().int().min(1),
+})
+
+const failureRecordSchema = z.object({
+  id: failureId,
+  runId,
+  spec: specId,
+  scenario: z.string(),
+  project: z.string(),
+  step: stepRefSchema.nullable(),
+  error: z.object({ message: z.string(), stack: z.string().nullable() }),
+  artifacts: z.object({
+    trace: z.string().nullable(),
+    screenshots: z.array(z.string()),
+    domSnapshot: z.string().nullable(),
+  }),
+  generated: stampSchema,
+  retries: z.number().int().min(0),
+})
+
+const verdictSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('app-broken'), evidence: z.string() }),
+  z.object({
+    kind: z.literal('test-broken'),
+    evidence: z.string(),
+    cause: z.enum(['spec-wrong', 'generated-code-wrong']),
+  }),
+  z.object({ kind: z.literal('inconclusive'), evidence: z.string() }),
+])
+
+const triageRecordSchema = z.object({
+  failure: failureId,
+  runId,
+  spec: specId,
+  generated: stampSchema,
+  verdict: verdictSchema,
+  live: z.boolean(),
+  model: z.string(),
+  usage: z.object({ turns: z.number(), costUsd: z.number().nullable() }),
+  at: z.string(),
+})
+
+export const runRecordSchema = z.object({
+  latest: z.object({
+    runId,
+    startedAt: z.string(),
+    baseURL: z.string(),
+    passed: z.number().int().min(0),
+  }),
+  flaky: z.array(failureId),
+  failures: z.record(z.string(), failureRecordSchema),
+}) satisfies z.ZodType<RunRecord>
+
+export const triageLogSchema = z.object({
+  records: z.record(z.string(), triageRecordSchema),
+}) satisfies z.ZodType<TriageLog>

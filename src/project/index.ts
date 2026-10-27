@@ -1,8 +1,8 @@
-import type { AgentRunner } from '../agent/index.js'
-import type { ResolvedConfig } from '../config/index.js'
-import type { Suite } from '../spec/index.js'
-import type { Workspace } from '../workspace/index.js'
-import type { Logger } from '../log/index.js'
+import { createAgentRunner, type AgentRunner } from '../agent/index.js'
+import { loadConfig, type ResolvedConfig } from '../config/index.js'
+import { loadSuite, type Suite } from '../spec/index.js'
+import { openWorkspace, type Workspace } from '../workspace/index.js'
+import { consoleLogger, type Logger } from '../log/index.js'
 
 /** Options shared by all four commands' programmatic API. */
 export interface CommandOptions {
@@ -37,5 +37,15 @@ export type RunContext = Omit<Project, 'agent'>
 
 /** loadConfig → loadSuite (throws SpecError) → openWorkspace. */
 export async function openProject(options: CommandOptions): Promise<Project> {
-  throw new Error('not implemented')
+  const config = await loadConfig(options.cwd ?? process.cwd(), options.config)
+  const suite = await loadSuite(config.specsDir)
+  const workspace = openWorkspace(config.root, config.specsDir)
+  return {
+    config,
+    suite,
+    workspace,
+    log: options.log ?? consoleLogger({ verbose: false }),
+    signal: options.signal,
+    agent: options.agent ?? createAgentRunner(config.backend),
+  }
 }
