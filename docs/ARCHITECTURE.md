@@ -184,6 +184,14 @@ Rejected: `endsSession` tools that abort the vendor session from inside a handle
   - `triage()` probes once per invocation even when everything is skipped, so `live` is always honest. A failure whose spec is no longer in the suite is skipped as `spec-changed-since-run`.
   - `write_test.accept` redacts secret values from `runDraft` output before returning it as feedback.
   - `AgentResult`'s unsubmitted member is now distributed over `StopReason` (`Unsubmitted<Reason>`), so `verdictFrom`'s `Exclude<…, { reason: 'aborted' }>` excludes what it claims to.
+- 2026-10-27, fix and cli (wave 2b; 209 tests), then an end-to-end smoke on `examples/login` through the real CLI on Claude: `generate` (5 turns, accepted on the first draft after the accept gate ran it against the app), `run` green on the healthy app, `run` red on the server with the wrong greeting, `triage` → `app-broken` with evidence from the failure screenshot and ARIA snapshot. Accepted.
+  - `specEditTask` and `triageTask` are async: both read the generated file.
+  - `proposeSpecEdit` takes the set of failing scenario names (to allow dropping only those) and an `env` for the unknown-secret check.
+  - `generateSpecs`'s `force` applies to the whole call. `fix` passes `force: true` for the approved batch; edited specs are stale anyway.
+  - `probe` is duplicated in `fix/index.ts` because `triage/index.ts` does not export it. Candidate for a shared `net` helper if a third caller appears.
+  - The CLI exits 2 for every thrown `Error` (config errors and "no recorded run" are plain `Error`s), prints stacks only under `--verbose`, and adds `-y`, `-v`, `-h`/`--help`.
+  - Generated-file headers now name the spec relative to the project root (`specs/auth/login.md`); the first smoke run printed an absolute path.
+  - Observed in the smoke: the triage agent judged from recorded artifacts and chose not to probe the live app even though browser tools were attached, and said so in its evidence. Acceptable; the prompt could insist on probing when the verdict hinges on current behavior.
 
 ## Open questions and risks
 

@@ -56,7 +56,7 @@ export function writeTestSubmission(
         }
       }
 
-      const result = await runDraft(project, rendered, spec.file, storageState)
+      const result = await runDraft(project, rendered, path.relative(project.config.root, spec.file), storageState)
       if (result.passed) return { ok: true, value: rendered }
 
       const { scenario, step, error } = result.failure
@@ -209,7 +209,8 @@ export async function generateOne(project: Project, spec: Spec, opts: { force: b
   const result = await project.agent.run(generationTask(project, spec, submit, { storageState, secrets }, opts.hint))
   if (result.status === 'unsubmitted') return failed(result.reason, result.lastText)
 
-  const { replaced } = await workspace.writeGenerated(result.value, spec.file)
+  // The header names the spec relative to the project root, so it reads the same on every machine.
+  const { replaced } = await workspace.writeGenerated(result.value, path.relative(project.config.root, spec.file))
   if (replaced === 'hand-edited') {
     log.warn(`${spec.id}: overwrote hand edits in ${workspace.generatedFile(spec.id)}. Change the spec instead; generated files are rewritten.`)
   }
