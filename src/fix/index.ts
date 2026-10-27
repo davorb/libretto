@@ -128,7 +128,13 @@ export async function fix(options: FixOptions): Promise<FixReport> {
   if (approved.length === 0) return { applied, declined, unresolved, generated: { written: [], fresh: [], failed: [] } }
 
   const reloaded = await openProject(options)
-  const generated = await generateSpecs(reloaded, approved, { force: true, hints })
+  // An edited fixture changes the Merkle hash of every spec that uses it, so those are
+  // stale now and would fail against the old generated code. Regenerate them in the same pass.
+  const approvedSet = new Set(approved)
+  const dependents = [...reloaded.suite.specs.values()]
+    .filter((s) => !approvedSet.has(s.id) && reloaded.suite.fixtureChain(s).some((f) => approvedSet.has(f.id)))
+    .map((s) => s.id)
+  const generated = await generateSpecs(reloaded, [...approved, ...dependents], { force: true, hints })
   return { applied, declined, unresolved, generated }
 }
 

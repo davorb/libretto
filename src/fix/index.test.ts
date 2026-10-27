@@ -162,6 +162,26 @@ describe('fix', () => {
     expect(task.prompt).toContain('propose_spec_edit')
   })
 
+  it('regenerates specs that use an edited fixture, since the edit made them stale', async () => {
+    const fixture = (step: string) => `# Logged in\nSteps:\n- ${step}\n`
+    await layout({
+      'fixtures/logged-in.md': fixture('Click Sign in'),
+      'home/logout.md': `---\nuses: [logged-in]\n---\n${spec('Logout', 'Click Log out')}`,
+      'auth/login.md': spec('Login', 'Open the login page'),
+    })
+    const agent = scripted(() => ({ markdown: fixture('Click Log in'), summary: 'button renamed' }))
+    const project = await makeProject(agent)
+    await triaged(project, 'fixtures/logged-in', specWrong(), 'Logged in')
+    const second = await makeProject(agent)
+    vi.mocked(openProject).mockResolvedValueOnce(project).mockResolvedValueOnce(second)
+
+    await fix({ confirm: async () => true })
+
+    expect(generateSpecs).toHaveBeenCalledTimes(1)
+    const ids = vi.mocked(generateSpecs).mock.calls[0]![1]
+    expect(ids).toEqual(['fixtures/logged-in', 'home/logout'])
+  })
+
   it('does not write a declined proposal and does not regenerate', async () => {
     await layout({ 'auth/login.md': spec('Login') })
     const agent = scripted(() => ({ markdown: spec('Login', 'Click Log in'), summary: 's' }))

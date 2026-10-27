@@ -7,7 +7,7 @@ tags: [smoke]
 Steps:
 - Open the login page
 - Enter username `alice` and password {{env.ALICE_PASSWORD}}
-- Click "Log in"
+- Click "Sign in"
 
 Expect:
 - The heading "Welcome, alice" is visible
@@ -16,7 +16,7 @@ Expect:
 Steps:
 - Open the login page
 - Enter username `alice` and password `wrong`
-- Click "Log in"
+- Click "Sign in"
 
 Expect:
 - An alert with the text "Invalid credentials" is visible

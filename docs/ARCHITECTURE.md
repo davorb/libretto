@@ -192,6 +192,9 @@ Rejected: `endsSession` tools that abort the vendor session from inside a handle
   - The CLI exits 2 for every thrown `Error` (config errors and "no recorded run" are plain `Error`s), prints stacks only under `--verbose`, and adds `-y`, `-v`, `-h`/`--help`.
   - Generated-file headers now name the spec relative to the project root (`specs/auth/login.md`); the first smoke run printed an absolute path.
   - Observed in the smoke: the triage agent judged from recorded artifacts and chose not to probe the live app even though browser tools were attached, and said so in its evidence. Acceptable; the prompt could insist on probing when the verdict hinges on current behavior.
+- 2026-10-27, fixtures and fix smoked on `examples/login` (app gained a session cookie, `/home`, and `/logout`; specs gained `fixtures/logged-in` and `home/logout` with `uses`). `generate` produced the fixture with the secret typed by name, gave the logout generation a logged-in browser through `prepareStorageState`, and `run` ordered `setup:fixtures/logged-in` before its dependents: 4/4 green. Then the app's button was renamed to "Sign in" and `app.md` updated to say so: `run` failed 3, `triage` returned `test-broken (spec-wrong)` for all three (one agent probed the live page), `fix --yes` edited both specs by exactly one word each and regenerated them.
+  - Gap found and closed: `fix` regenerated only the specs it edited, but editing a fixture changes the Merkle hash of every spec that uses it, so `home/logout` was left stale and failed on the next run. `fix` now regenerates dependents of an edited fixture in the same pass (unit-tested).
+  - Protocol this establishes: `app.md` describes the app as it is now. When the app changes legitimately, update `app.md`; triage then reads the mismatch between `app.md` and a scenario as `spec-wrong` rather than `app-broken`. Stated in the README.
 
 ## Open questions and risks
 
