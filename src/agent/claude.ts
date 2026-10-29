@@ -21,6 +21,13 @@ const PLAYWRIGHT_PREFIX = `mcp__${PLAYWRIGHT_SERVER}__`
 const PARENT_SESSION_VARS = /^(CLAUDECODE|CLAUDE_CODE_.*|CLAUDE_PID|CLAUDE_EFFORT)$/
 
 /**
+ * Claude Code spills MCP output over 25k tokens to a file and tells the model to open it
+ * with Read, which `tools: []` removes. A real page's `browser_snapshot` passes 25k
+ * tokens easily, so without this the agent cannot see the app at all.
+ */
+const MCP_OUTPUT_TOKENS = '120000'
+
+/**
  * `AgentRunner` over `@anthropic-ai/claude-agent-sdk`'s `query()`.
  *
  * SDK option mapping (the only place these vendor names appear):
@@ -32,6 +39,7 @@ const PARENT_SESSION_VARS = /^(CLAUDECODE|CLAUDE_CODE_.*|CLAUDE_PID|CLAUDE_EFFOR
  *   auto-approve before the callback runs, so the callback is the only gate.
  * - `settingSources: []`: the user's ~/.claude settings, hooks, and CLAUDE.md never load.
  * - `env`: `process.env` minus parent-session vars and every secret name, plus `options.env`.
+ *   `MAX_MCP_OUTPUT_TOKENS` defaults to `MCP_OUTPUT_TOKENS` unless the caller sets it.
  *   The Claude Code subprocess has no reason to hold a secret value; only the Playwright
  *   MCP child does, through its secrets file.
  * - `systemPrompt`, `model`, `cwd`, `maxTurns`, `maxBudgetUsd` (when non-null), `abortController` tied to `task.signal`.
@@ -190,7 +198,7 @@ function subprocessEnv<R>(task: AgentTask<R>, extra: Readonly<Record<string, str
     if (PARENT_SESSION_VARS.test(k) || secretNames.has(k)) continue
     env[k] = v
   }
-  return { ...env, ...extra }
+  return { MAX_MCP_OUTPUT_TOKENS: MCP_OUTPUT_TOKENS, ...env, ...extra }
 }
 
 export type { Session }
