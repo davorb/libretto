@@ -1,6 +1,24 @@
 # Libretto
 
-Spec-driven end-to-end testing for TypeScript. You describe your app's behavior in plain markdown. Libretto turns each spec into a committed Playwright test, runs the tests without any AI, and when one fails, tells you whether the app or the test is broken and offers to fix the test.
+**Write end-to-end tests in plain English. Run them as ordinary Playwright. When one goes red, an agent tells you whether the app or the test is broken.**
+
+![libretto run passes, a regression ships, libretto run fails, and libretto triage returns app-broken](docs/demo.gif)
+
+<sub>The [login example](examples/login): the suite passes, a build that stops greeting the user by name ships, `run` goes red, and `triage` reproduces the bug in the live app and calls it `app-broken`. Real output; the ~30 s triage pause is shortened.</sub>
+
+## Why Libretto
+
+- **Tests anyone can read.** A spec is a markdown file with `Steps:` and `Expect:` bullets. Product, QA, and engineering review the same file, and each bullet becomes a `test.step`, so a Playwright report reads like the spec.
+- **No AI in your CI.** Generated tests are committed TypeScript. `libretto run` is plain Playwright: deterministic, fast, and free. The suite in the GIF runs in under a second.
+- **No test is committed until it passes.** Generation runs each test against your app before it writes the file. You never commit a test that has not passed.
+- **Red builds come with a diagnosis.** You don't have to work out whether a selector rotted or a real bug shipped. `libretto triage` reads the trace, the screenshot, and the DOM, reproduces the failure in the live app, and returns a verdict with its reasoning.
+- **Fixes need your approval.** When the app changed on purpose, `libretto fix` updates the spec or regenerates the code, and asks before it applies anything.
+- **Secrets stay out of the model.** `{{env.PASSWORD}}` reaches the browser and `process.env`, never the prompt, the logs, or git.
+- **You decide when to spend.** Tokens are spent only when you run `generate`, `triage`, or `fix`, with turn and dollar caps per command. Use an Anthropic API key, your existing Claude login, or GitHub Copilot (experimental).
+
+## How it fits together
+
+Libretto turns each spec into a committed Playwright test, runs the tests without any AI, and when one fails, tells you whether the app or the test is broken and offers to fix the test.
 
 ```
 specs/*.md ──generate──▶ .libretto/generated/*.generated.spec.ts ──run──▶ results
@@ -11,8 +29,6 @@ specs/*.md ──generate──▶ .libretto/generated/*.generated.spec.ts ─�
                                                                           ▼
                                               fix ──▶ edits the spec, regenerates the test
 ```
-
-Nothing spends AI tokens unless you run `generate`, `triage`, or `fix`.
 
 ## Install
 
