@@ -2,9 +2,9 @@
 
 **Write end-to-end tests in plain English. Run them as ordinary Playwright. When one goes red, an agent tells you whether the app or the test is broken.**
 
-![libretto run passes, a regression ships, libretto run fails, and libretto triage returns app-broken](docs/demo.gif)
+![libretto run passes, a regression ships, libretto run fails, and libretto triage flags it as an app bug](docs/demo.gif)
 
-<sub>The [login example](examples/login): the suite passes, a build that stops greeting the user by name ships, `run` goes red, and `triage` reproduces the bug in the live app and calls it `app-broken`. Real output; the ~30 s triage pause is shortened.</sub>
+<sub>The [login example](examples/login): the suite passes, a build that stops greeting the user by name ships, `run` goes red, and `triage` reproduces the bug in the live app and flags it with a red **APP BUG** badge: the app is at fault, not the test. Real output; the ~30 s triage pause is shortened.</sub>
 
 ## Why Libretto
 

@@ -23,8 +23,8 @@
 import { realpathSync } from 'node:fs'
 import { createInterface } from 'node:readline/promises'
 import { pathToFileURL } from 'node:url'
-import { parseArgs } from 'node:util'
-import { fix, generate, run, triage, type CommandOptions, type FixProposal, type FixReport, type GenerateReport, type RunReport, type TriageReport } from '../index.js'
+import { parseArgs, styleText } from 'node:util'
+import { fix, generate, run, triage, type CommandOptions, type FixProposal, type FixReport, type GenerateReport, type RunReport, type TriageReport, type Verdict } from '../index.js'
 import { consoleLogger } from '../log/index.js'
 
 const USAGE = `usage:
@@ -51,16 +51,72 @@ function printRun(report: RunReport): void {
   for (const f of report.failures) out(`  FAIL ${f.spec} › ${f.scenario}: ${f.error.message.split('\n')[0] ?? ''}`)
 }
 
-function printTriage(report: TriageReport): void {
-  for (const r of report.records) {
-    const { verdict } = r
-    const kind = verdict.kind === 'test-broken' ? `test-broken (${verdict.cause})` : verdict.kind
-    const scenario = r.failure.split('::').slice(2).join('::')
-    out(`${r.spec} › ${scenario}: ${kind} - ${verdict.evidence}`)
+/** Colors only when stdout is a terminal, and honors NO_COLOR / FORCE_COLOR. */
+const paint = (format: Parameters<typeof styleText>[0], text: string) => styleText(format, text, { stream: process.stdout })
+
+/** Greedy word wrap; a word longer than the width gets a line of its own. */
+function wrap(text: string, width: number): string[] {
+  const lines: string[] = []
+  let line = ''
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    if (line && line.length + 1 + word.length > width) {
+      lines.push(line)
+      line = word
+    } else {
+      line = line ? `${line} ${word}` : word
+    }
   }
-  for (const s of report.skipped) out(`skipped ${s.failure}: ${s.reason}`)
-  if (!report.live) out('note: the app was not reachable, verdicts use recorded artifacts only')
-  out(`${report.records.length} triaged, ${report.skipped.length} skipped`)
+  if (line) lines.push(line)
+  return lines
+}
+
+/** What a verdict means for the reader: whose fault it is, and what to do next. */
+function verdictView(verdict: Verdict): { badge: string; color: 'red' | 'yellow' | 'magenta'; headline: string } {
+  switch (verdict.kind) {
+    case 'app-broken':
+      return { badge: ' APP BUG ', color: 'red', headline: 'The app is broken; the test is right. Fix the app.' }
+    case 'test-broken':
+      return verdict.cause === 'spec-wrong'
+        ? { badge: ' TEST BUG ', color: 'yellow', headline: 'The app changed on purpose; the spec is out of date. Run `libretto fix`.' }
+        : { badge: ' TEST BUG ', color: 'yellow', headline: 'The spec and the app agree; the generated test code is wrong. Run `libretto fix`.' }
+    case 'inconclusive':
+      return { badge: ' UNSURE ', color: 'magenta', headline: 'Could not tell whether the app or the test is at fault. Read the evidence.' }
+  }
+}
+
+const SKIP_REASONS: Record<TriageReport['skipped'][number]['reason'], string> = {
+  'already-triaged': 'already triaged (pass --force to redo)',
+  'spec-changed-since-run': 'the spec changed since the run; regenerate and run again',
+  'generated-changed-since-run': 'the generated test changed since the run; run again',
+}
+
+const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`
+
+function printTriage(report: TriageReport): void {
+  const width = Math.min(process.stdout.columns ?? 100, 100) - 4
+  for (const r of report.records) {
+    const { badge, color, headline } = verdictView(r.verdict)
+    const scenario = r.failure.split('::').slice(2).join('::')
+    out()
+    out(`${paint(['inverse', 'bold', color], badge)} ${paint('bold', `${r.spec} › ${scenario}`)}`)
+    out(`    ${paint(['bold', color], headline)}`)
+    for (const line of wrap(r.verdict.evidence, width)) out(`    ${line}`)
+  }
+  if (report.records.length > 0) out()
+  for (const s of report.skipped) out(paint('dim', `skipped ${s.failure}: ${SKIP_REASONS[s.reason]}`))
+  if (!report.live) out(paint('yellow', 'note: the app was not reachable, verdicts use recorded artifacts only'))
+
+  const kinds = report.records.map((r) => r.verdict.kind)
+  const tally = (kind: Verdict['kind'], color: 'red' | 'yellow' | 'magenta', label: (n: number) => string) => {
+    const n = kinds.filter((k) => k === kind).length
+    return n === 0 ? paint('dim', label(n)) : paint(['bold', color], label(n))
+  }
+  const tallies = [
+    tally('app-broken', 'red', (n) => count(n, 'app bug')),
+    tally('test-broken', 'yellow', (n) => count(n, 'test bug')),
+    tally('inconclusive', 'magenta', (n) => `${n} unsure`),
+  ]
+  out(`${report.records.length} triaged: ${tallies.join(', ')}; ${report.skipped.length} skipped`)
 }
 
 function printFix(report: FixReport): void {
