@@ -209,16 +209,18 @@ export async function writeWrapperConfig(ctx: RunContext, mode: WrapperMode): Pr
   return out
 }
 
-function resolvePlaywrightCli(root: string): string {
-  try {
-    return createRequire(path.join(root, 'noop.js')).resolve('@playwright/test/cli')
-  } catch {
-    return createRequire(import.meta.url).resolve('@playwright/test/cli')
-  }
+/**
+ * The runner must be the `@playwright/test` that `libretto/test` imports, or Playwright
+ * throws "did not expect test.describe() to be called here". Resolving from the built test
+ * entry finds the user's copy in a normal install (it is a peer dependency) and Libretto's
+ * own copy when Libretto is linked from a checkout.
+ */
+function resolvePlaywrightCli(): string {
+  return createRequire(builtEntries().test).resolve('@playwright/test/cli')
 }
 
 function runCli(ctx: RunContext, wrapper: string, files: readonly string[], extraArgs: readonly string[], capture: boolean): Promise<{ code: number; output: string }> {
-  const args = [resolvePlaywrightCli(ctx.config.root), 'test', '-c', wrapper, ...files, ...extraArgs]
+  const args = [resolvePlaywrightCli(), 'test', '-c', wrapper, ...files, ...extraArgs]
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, args, { cwd: ctx.config.root, stdio: capture ? ['ignore', 'pipe', 'pipe'] : 'inherit' })
     let output = ''
