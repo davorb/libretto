@@ -90,10 +90,41 @@ describe('triage', () => {
       skipped: [{ failure: 'cart::chromium::old', reason: 'already-triaged' }],
     } as never)
     expect(await main(['triage'])).toBe(0)
-    expect(stdout).toContain('auth/login › valid: app-broken - dashboard 500s')
-    expect(stdout).toContain('cart › add: test-broken (spec-wrong) - renamed')
-    expect(stdout).toContain('skipped cart::chromium::old: already-triaged')
+    expect(stdout).toContain(' APP BUG  auth/login › valid\n    The app is broken; the test is right. Fix the app.\n    dashboard 500s')
+    expect(stdout).toContain(' TEST BUG  cart › add\n    The app changed on purpose; the spec is out of date.')
+    expect(stdout).toContain('skipped cart::chromium::old: already triaged (pass --force to redo)')
     expect(stdout).toContain('not reachable')
+    expect(stdout).toContain('2 triaged: 1 app bug, 1 test bug, 0 unsure; 1 skipped')
+    expect(stdout).not.toContain('\x1b[')
+  })
+
+  it('colors the verdict badge when color is forced', async () => {
+    vi.stubEnv('FORCE_COLOR', '1')
+    vi.mocked(triage).mockResolvedValue({
+      runId: 'r',
+      live: true,
+      records: [{ spec: 'a', failure: 'a::chromium::s', verdict: { kind: 'app-broken', evidence: 'e' } }],
+      skipped: [],
+    } as never)
+    try {
+      await main(['triage'])
+    } finally {
+      vi.unstubAllEnvs()
+    }
+    expect(stdout).toMatch(/\x1b\[7m\x1b\[1m\x1b\[31m APP BUG /)
+  })
+
+  it('wraps long evidence under the verdict', async () => {
+    vi.mocked(triage).mockResolvedValue({
+      runId: 'r',
+      live: true,
+      records: [{ spec: 'a', failure: 'a::chromium::s', verdict: { kind: 'inconclusive', evidence: 'word '.repeat(60).trim() } }],
+      skipped: [],
+    } as never)
+    await main(['triage'])
+    const evidence = stdout.split('\n').filter((l) => l.startsWith('    word'))
+    expect(evidence.length).toBeGreaterThan(1)
+    for (const line of evidence) expect(line.length).toBeLessThanOrEqual(100)
   })
 })
 
