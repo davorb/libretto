@@ -134,7 +134,7 @@ test('draft scenario', async ({ page }) => {
         render('fixtures/base', `import { test } from 'libretto/test'
 test('Base', async ({ page }) => {
   await test.step('Steps 1: set up', async () => {
-    await page.context().storageState({ path: ${JSON.stringify(statePath)} })
+    await page.context().storageState({ path: '.libretto/state/fixtures/base.json' })
   })
 })
 `),
@@ -142,6 +142,7 @@ test('Base', async ({ page }) => {
       )
       await workspace.writeGenerated(
         render('auth/login', `import { test, expect } from 'libretto/test'
+test.use({ storageState: '.libretto/state/fixtures/base.json' })
 test('bad password', async ({ page }) => {
   await test.step('Steps 1: go', async () => {
     await page.setContent('<p>x</p>')

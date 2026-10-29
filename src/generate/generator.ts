@@ -43,9 +43,11 @@ export function writeTestSubmission(
         return { ok: false, feedback: `The draft was not accepted. Fix these and call write_test again:\n${problems.map((p) => `- ${p}`).join('\n')}` }
       }
 
+      // Committed code names state files relative to the root, where Playwright always runs.
+      const fromRoot = (file: string) => path.relative(project.workspace.root, file)
       const rendered = renderTest(spec, project.suite.app, draft, {
-        storageStateIn: storageState,
-        storageStateOut: spec.kind === 'fixture' ? project.workspace.stateFile(spec.id) : null,
+        storageStateIn: storageState === null ? null : fromRoot(storageState),
+        storageStateOut: spec.kind === 'fixture' ? fromRoot(project.workspace.stateFile(spec.id)) : null,
       })
 
       const leaked = secrets.findLeak(rendered.body)

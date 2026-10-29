@@ -91,7 +91,7 @@ export function checkDraft(spec: Spec, draft: TestDraft): readonly string[] {
  * Pure. Draft + spec → file body (the workspace adds the header).
  *
  *   import { test, expect } from 'libretto/test'
- *   test.use({ storageState: '<workspace.stateFile(chain innermost)>' })   // if uses
+ *   test.use({ storageState: '<storageStateIn>' })   // if uses
  *   <helpers>
  *   test.describe('<spec.title>', () => {
  *     test('<scenario.name>', async ({ page }) => {
@@ -101,7 +101,8 @@ export function checkDraft(spec: Spec, draft: TestDraft): readonly string[] {
  *   })
  *
  * A fixture renders as a single setup test that ends with
- * `await page.context().storageState({ path: '<workspace.stateFile(spec.id)>' })`.
+ * `await page.context().storageState({ path: '<storageStateOut>' })`. The caller passes
+ * both relative to the project root, so committed files carry no machine path.
  * A fixture with several scenarios renders each as a test and saves the state at the
  * end of the last one.
  */

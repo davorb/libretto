@@ -235,13 +235,16 @@ describe('generateOne', () => {
   it('renders a fixture so it saves its storage state, and a dependent so it loads one', async () => {
     const fixture = makeSpec('fixtures/logged-in')
     const dependent = makeSpec('auth/account', { uses: fixture.id })
-    prepareMock.mockResolvedValue('/state/logged-in.json')
+    prepareMock.mockResolvedValue(workspace.stateFile(fixture.id))
     const p = project([fixture, dependent], scripted([goodDraft()]))
     await generateOne(p, fixture, { force: false, hint: null })
     await generateOne(p, dependent, { force: false, hint: null })
-    expect(await readFile(workspace.generatedFile(fixture.id), 'utf8')).toContain(workspace.stateFile(fixture.id))
-    expect(await readFile(workspace.generatedFile(dependent.id), 'utf8')).toContain('"/state/logged-in.json"')
-    expect(runDraftMock.mock.calls[1]![3]).toBe('/state/logged-in.json')
+    const fixtureFile = await readFile(workspace.generatedFile(fixture.id), 'utf8')
+    const dependentFile = await readFile(workspace.generatedFile(dependent.id), 'utf8')
+    expect(fixtureFile).toContain('storageState({ path: ".libretto/state/fixtures/logged-in.json" })')
+    expect(dependentFile).toContain('test.use({ storageState: ".libretto/state/fixtures/logged-in.json" })')
+    expect(fixtureFile + dependentFile).not.toContain(workspace.root)
+    expect(runDraftMock.mock.calls[1]![3]).toBe(workspace.stateFile(fixture.id))
   })
 
   it('fails with missing-secrets and no agent call when an env var is unset', async () => {
