@@ -70,6 +70,11 @@ export function openSession<R>(task: AgentTask<R>, backend: string): Session<R> 
   const redact = (text: string): string => secrets.redact(text)
   const emit = (event: AgentEvent): void => task.onEvent?.(redactEvent(event, redact))
 
+  const fail = (tool: string, reply: string): string => {
+    emit({ type: 'tool-result', server: 'libretto', tool, ok: false, reason: reply })
+    return reply
+  }
+
   let settled = false
   let value: R | undefined
 
@@ -82,16 +87,14 @@ export function openSession<R>(task: AgentTask<R>, backend: string): Session<R> 
       emit({ type: 'tool-call', server: 'libretto', tool: tool.name, input: raw })
       const parsed = tool.input.safeParse(raw)
       if (!parsed.success) {
-        emit({ type: 'tool-result', server: 'libretto', tool: tool.name, ok: false })
-        return `Invalid input: ${formatIssues(parsed.error)}`
+        return fail(tool.name, `Invalid input: ${formatIssues(parsed.error)}`)
       }
       try {
         const reply = await tool.handler(parsed.data)
         emit({ type: 'tool-result', server: 'libretto', tool: tool.name, ok: true })
         return redactReply(reply, redact)
       } catch (error) {
-        emit({ type: 'tool-result', server: 'libretto', tool: tool.name, ok: false })
-        return `Tool error: ${redact(messageOf(error))}`
+        return fail(tool.name, `Tool error: ${redact(messageOf(error))}`)
       }
     },
   })
@@ -106,15 +109,13 @@ export function openSession<R>(task: AgentTask<R>, backend: string): Session<R> 
       if (settled) return ALREADY_SUBMITTED
       const parsed = submit.input.safeParse(raw)
       if (!parsed.success) {
-        emit({ type: 'tool-result', server: 'libretto', tool: submit.name, ok: false })
-        return `Invalid input: ${formatIssues(parsed.error)}`
+        return fail(submit.name, `Invalid input: ${formatIssues(parsed.error)}`)
       }
       let acceptance
       try {
         acceptance = await submit.accept(parsed.data)
       } catch (error) {
-        emit({ type: 'tool-result', server: 'libretto', tool: submit.name, ok: false })
-        return `Tool error: ${redact(messageOf(error))}`
+        return fail(submit.name, `Tool error: ${redact(messageOf(error))}`)
       }
       if (acceptance.ok) {
         settled = true
@@ -122,8 +123,7 @@ export function openSession<R>(task: AgentTask<R>, backend: string): Session<R> 
         emit({ type: 'tool-result', server: 'libretto', tool: submit.name, ok: true })
         return ACCEPTED
       }
-      emit({ type: 'tool-result', server: 'libretto', tool: submit.name, ok: false })
-      return redact(acceptance.feedback)
+      return fail(submit.name, redact(acceptance.feedback))
     },
   })
 
@@ -167,6 +167,8 @@ function redactEvent(event: AgentEvent, redact: (s: string) => string): AgentEve
       return { ...event, text: redact(event.text) }
     case 'tool-call':
       return { ...event, input: redactUnknown(event.input, redact) }
+    case 'tool-result':
+      return event.ok ? event : { ...event, reason: redact(event.reason) }
     default:
       return event
   }

@@ -33,12 +33,12 @@ describe('consoleLogger', () => {
     loud.agent('triage a', { type: 'turn', turn: 2 })
     loud.agent('triage a', { type: 'text', text: 'thinking' })
     loud.agent('triage a', { type: 'tool-call', server: 'playwright', tool: 'browser_click', input: { ref: 'e1' } })
-    loud.agent('triage a', { type: 'tool-result', server: 'libretto', tool: 'read_spec', ok: false })
+    loud.agent('triage a', { type: 'tool-result', server: 'libretto', tool: 'read_spec', ok: false, reason: 'No spec named x' })
     expect(lines).toEqual([
       '[triage a] turn 2\n',
       '[triage a] thinking\n',
       '[triage a] playwright.browser_click {"ref":"e1"}\n',
-      '[triage a] libretto.read_spec failed\n',
+      '[triage a] libretto.read_spec failed: No spec named x\n',
     ])
   })
 })

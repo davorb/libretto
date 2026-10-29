@@ -109,7 +109,9 @@ export type AgentEvent =
   | { readonly type: 'turn'; readonly turn: number }
   | { readonly type: 'text'; readonly text: string }
   | { readonly type: 'tool-call'; readonly server: 'playwright' | 'libretto'; readonly tool: string; readonly input: unknown }
-  | { readonly type: 'tool-result'; readonly server: 'playwright' | 'libretto'; readonly tool: string; readonly ok: boolean }
+  | { readonly type: 'tool-result'; readonly server: 'playwright' | 'libretto'; readonly tool: string; readonly ok: true }
+  /** `reason` is the reply the agent got: a parse error, a handler error, or a submission's feedback. */
+  | { readonly type: 'tool-result'; readonly server: 'playwright' | 'libretto'; readonly tool: string; readonly ok: false; readonly reason: string }
 
 export interface Usage {
   readonly turns: number

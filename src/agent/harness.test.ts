@@ -69,6 +69,21 @@ describe('openSession', () => {
     expect(s.finish('turn-cap', { turns: 2, costUsd: 0.1 }, 'ignored')).toEqual({ status: 'submitted', value: 4, usage: { turns: 2, costUsd: 0.1 } })
   })
 
+  it('puts the reply the agent got into each failed tool-result event', async () => {
+    const events: AgentEvent[] = []
+    const s = openSession(task({ onEvent: (e) => events.push(e) }), 'x')
+    const [e, b] = s.tools
+    const submit = s.tools.find((t) => t.name === 'submit_even')!
+    await e!.invoke({ text: 'hi' })
+    await b!.invoke({ n: 1 })
+    await submit.invoke({ n: 3 })
+    expect(events.filter((ev) => ev.type === 'tool-result')).toEqual([
+      { type: 'tool-result', server: 'libretto', tool: 'echo', ok: true },
+      { type: 'tool-result', server: 'libretto', tool: 'boom', ok: false, reason: 'Tool error: kaboom with hunter2-long inside' },
+      { type: 'tool-result', server: 'libretto', tool: 'submit_even', ok: false, reason: '3 is odd' },
+    ])
+  })
+
   it('reports unsubmitted with the stop reason', () => {
     const s = openSession(task(), 'x')
     expect(s.finish('ended', { turns: 1, costUsd: null }, 'gave up')).toEqual({ status: 'unsubmitted', reason: 'ended', lastText: 'gave up', usage: { turns: 1, costUsd: null } })

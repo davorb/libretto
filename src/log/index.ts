@@ -18,7 +18,7 @@ function describeEvent(event: AgentEvent): string {
     case 'tool-call':
       return `${event.server}.${event.tool} ${JSON.stringify(event.input) ?? ''}`.trimEnd()
     case 'tool-result':
-      return `${event.server}.${event.tool} ${event.ok ? 'ok' : 'failed'}`
+      return `${event.server}.${event.tool} ${event.ok ? 'ok' : `failed: ${event.reason}`}`
   }
 }
 
